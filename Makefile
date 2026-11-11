@@ -1,25 +1,58 @@
-# GEM Text Editor - build with the FreeMiNT cross toolchain
-#   (m68k-atari-mint-gcc + gemlib).  Run `make`, copy GEMEDIT.PRG to your ST.
-#
-# Plain TOS 1.00 (no fsel_exinput): add -DNO_FSEL_EXINPUT to CFLAGS.
+.DEFAULT_GOAL := all
 
-CC      = m68k-atari-mint-gcc
-CFLAGS  = -O2 -Wall -m68000 -fomit-frame-pointer
-LDLIBS  = -lgem
+# Project settings
+BUILD_DIR := build
+TARGET_NAME ?= gemedit
+CPU := 68000
+TOOLKIT	?= /usr/local/bin/m68k-atari-elf
 
-OBJS = main.o app.o commands.o menu.o dialog.o window.o doc.o textbuf.o undo.o clip.o bookmark.o
+LDFLAGS :=
+CFLAGS := -Wall -Os -g -m$(CPU) -DNO_FSEL_EXINPUT
+ASFLAGS := -g --register-prefix-optional -mcpu=$(CPU)
 
-gemedit.prg: $(OBJS)
-	$(CC) -o $@ $(OBJS) $(LDLIBS)
-	m68k-atari-mint-strip -s $@ || true
+SOURCES := main.c app.c commands.c menu.c dialog.c window.c doc.c textbuf.c undo.c clip.c bookmark.c
 
-%.o: %.c
+# Toolchain command settings
+# Project build architecture settings
+TOOLKIT_BIN := $(TOOLKIT)/bin
+CC := $(TOOLKIT_BIN)/m68k-atari-elf-gcc
+AS := $(TOOLKIT_BIN)/m68k-atari-elf-as
+LD := $(TOOLKIT_BIN)/m68k-atari-elf-gcc
+ELFTOPRG := $(TOOLKIT_BIN)/m68k-atari-elf-prg
+
+# Building object list
+OBJS := $(foreach source,$(SOURCES),$(BUILD_DIR)/$(basename $(source)).o)
+
+# Targets
+TARGET_PRG := $(BUILD_DIR)/$(TARGET_NAME).prg
+TARGET_ELF := $(BUILD_DIR)/$(TARGET_NAME)
+
+# asm
+$(BUILD_DIR)/%.o: %.s
+	$(AS) $(ASFLAGS) -c $< -o $@
+
+# c
+$(BUILD_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-main.o app.o commands.o menu.o dialog.o window.o: gemcompat.h app.h doc.h
-doc.o: doc.h textbuf.h undo.h clip.h bookmark.h
-bookmark.o app.o commands.o menu.o: bookmark.h
-commands.o menu.o main.o: commands.h
+# Build target
+$(TARGET_PRG): $(TARGET_ELF)
+	$(ELFTOPRG) $< $@
+
+$(TARGET_ELF): $(OBJS)
+	$(LD) $(LDFLAGS) $^ -o $@ -ltos -lvdi -laes
+
+# Create build directory
+$(BUILD_DIR): $(shell mkdir -p $(BUILD_DIR))
+
+all:	$(BUILD_DIR) $(TARGET_PRG)
+
+# Header dependencies
+B := $(BUILD_DIR)
+$(B)/main.o $(B)/app.o $(B)/commands.o $(B)/menu.o $(B)/dialog.o $(B)/window.o: gemcompat.h app.h doc.h
+$(B)/doc.o: doc.h textbuf.h undo.h clip.h bookmark.h
+$(B)/bookmark.o $(B)/app.o $(B)/commands.o $(B)/menu.o: bookmark.h
+$(B)/commands.o $(B)/menu.o $(B)/main.o: commands.h
 
 clean:
-	rm -f *.o gemedit.prg
+	$(shell rm -r $(BUILD_DIR))

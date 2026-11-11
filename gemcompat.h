@@ -17,9 +17,16 @@
 #include <tos.h>
 typedef int gint;               /* 16 bit int used for all AES/VDI values */
 #else
+#ifdef __M68K_ATARI_ELF__
+#include <aes.h>
+#include <vdi.h>
+#include <tos.h>
+typedef short gint;
+#else
 #include <gem.h>
 #include <osbind.h>
 typedef short gint;
+#endif
 #endif
 
 /* Use fsel_exinput() (TOS 1.04+). Define NO_FSEL_EXINPUT for plain TOS 1.0. */

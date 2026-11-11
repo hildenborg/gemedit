@@ -20,8 +20,12 @@ int rect_intersect(const Rect *a, const Rect *b, Rect *r)
 
 int app_init(void)
 {
-    gint work_in[11], work_out[57], i, dummy, h, a, b;
-
+    gint work_in[11], i, dummy, h, a, b;
+#ifdef __M68K_ATARI_ELF__
+    WS  work_out;
+#else
+    gint work_out[57];
+#endif
     memset(&app, 0, sizeof app);
     app.ap_id = appl_init();
     if (app.ap_id < 0)
@@ -31,14 +35,23 @@ int app_init(void)
     for (i = 0; i < 10; i++)
         work_in[i] = 1;
     work_in[10] = 2;                        /* raster coordinates */
+#ifdef __M68K_ATARI_ELF__
+    v_opnvwk(work_in, &h, &work_out);
+#else
     v_opnvwk(work_in, &h, work_out);
+#endif
     if (h == 0) {
         appl_exit();
         return -1;
     }
     app.vh = h;
+#ifdef __M68K_ATARI_ELF__
+    app.scrw = work_out.ws_xres + 1;
+    app.scrh = work_out.ws_yres + 1;
+#else
     app.scrw = work_out[0] + 1;
     app.scrh = work_out[1] + 1;
+#endif
 
     vst_alignment(app.vh, 0, 5, &a, &b);    /* left / top aligned text */
     vst_color(app.vh, 1);

@@ -21,6 +21,8 @@
 #define SC_CEND   0x75          /* Ctrl+End   */
 #define SC_CHOME  0x77          /* Ctrl+Home  */
 
+int _stksize = 1;
+
 /* Ctrl+letter -> command. We test the ASCII value (1..26) the keyboard
  * layout delivers, so shortcuts follow the key caps on any national layout. */
 static int ctrl_cmd(int letter)
