@@ -7,6 +7,7 @@
 #include "window.h"
 #include "clip.h"
 #include "bookmark.h"
+#include "session.h"
 
 static char find_buf[DLG_FLD + 2] = "";
 static char repl_buf[DLG_FLD + 2] = "";
@@ -74,11 +75,41 @@ static void cmd_new(void)
     }
 }
 
+/* Load a file into a new document with a window.  With 'quiet' errors
+ * are not reported (the caller counts them).  Returns 0 on failure. */
+static Doc *open_file(const char *path, int quiet)
+{
+    Doc *d;
+    int r;
+
+    d = app_doc_new();
+    if (!d) {
+        if (!quiet)
+            dlg_alert(3, app.ndocs >= MAX_DOCS ? "Too many documents open." : "Out of memory!", "");
+        return 0;
+    }
+    r = doc_load(d, path);
+    if (r) {
+        if (!quiet)
+            dlg_alert(3, r == -2 ? "Not enough memory for file:" : "Cannot read file:", path);
+        app_doc_remove(d);
+        return 0;
+    }
+    doc_set_path(d, path);
+    if (win_open(d) < 0) {
+        if (!quiet)
+            dlg_alert(3, "No more windows available.", "");
+        app_doc_remove(d);
+        return 0;
+    }
+    return d;
+}
+
 static void cmd_open(void)
 {
     char path[PATHLEN];
-    Doc *d, *old = 0;
-    int i, r;
+    Doc *old = 0;
+    int i;
 
     if (!dlg_fileselect("Open file", path, ""))
         return;
@@ -92,24 +123,7 @@ static void cmd_open(void)
     if (old && app.ndocs >= MAX_DOCS)
         old = 0;
 
-    d = app_doc_new();
-    if (!d) {
-        dlg_alert(3, app.ndocs >= MAX_DOCS ? "Too many documents open." : "Out of memory!", "");
-        return;
-    }
-    r = doc_load(d, path);
-    if (r) {
-        dlg_alert(3, r == -2 ? "Not enough memory for file:" : "Cannot read file:", path);
-        app_doc_remove(d);
-        return;
-    }
-    doc_set_path(d, path);
-    if (win_open(d) < 0) {
-        dlg_alert(3, "No more windows available.", "");
-        app_doc_remove(d);
-        return;
-    }
-    if (old)
+    if (open_file(path, 0) && old)
         remove_doc(old);
 }
 
@@ -184,6 +198,113 @@ static void cmd_quit(void)
     while (app.ndocs)
         remove_doc(app.docs[0]);
     app.running = 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* sessions: the open documents and the bookmarks in one file          */
+/* ------------------------------------------------------------------ */
+
+static Session ses;                     /* ~2 KB, kept off the stack */
+
+static void cmd_save_session(void)
+{
+    char path[PATHLEN], msg[40];
+    int i, j, idx[MAX_DOCS], skipped = 0;
+    Doc *d, *top = app_top_doc();
+    long line;
+
+    ses_clear(&ses);
+    for (i = 0; i < app.ndocs; i++) {
+        d = app.docs[i];
+        idx[i] = -1;
+        if (!d->has_path) {             /* untitled: nothing to reopen */
+            skipped++;
+            continue;
+        }
+        idx[i] = ses.ndocs;
+        line = tb_line_of(&d->tb, d->cursor);
+        strcpy(ses.doc[ses.ndocs].path, d->path);
+        ses.doc[ses.ndocs].line = line;
+        ses.doc[ses.ndocs].col = d->cursor - tb_line_start(&d->tb, line);
+        if (d == top)
+            ses.top = ses.ndocs;
+        ses.ndocs++;
+    }
+    for (j = 0; j < BM_MAX; j++)
+        for (i = 0; i < app.ndocs; i++)
+            if (bm_tab[j].doc == app.docs[i] && idx[i] >= 0) {
+                ses.bm_doc[j] = idx[i];
+                ses.bm_line[j] = bm_line(j);
+            }
+
+    if (!dlg_fileselect("Save session", path, "EDITOR.SES"))
+        return;
+    if (file_exists(path) && !dlg_confirm_overwrite(path))
+        return;
+    if (ses_write(path, &ses)) {
+        dlg_alert(3, "Could not write session:", path);
+        return;
+    }
+    if (skipped) {
+        sprintf(msg, "%d untitled document(s)", skipped);
+        dlg_alert(1, msg, "were not saved in the session.");
+    }
+}
+
+/* Replace the open documents and the bookmarks with those in a session file.
+ * Modified documents are offered for saving first; Cancel aborts. */
+static void cmd_load_session(void)
+{
+    char path[PATHLEN], msg[40];
+    Doc *map[SES_MAXDOCS], *d;
+    int i, r, failed = 0;
+    long line, ls, le;
+
+    if (!dlg_fileselect("Load session", path, ""))
+        return;
+    r = ses_read(path, &ses);
+    if (r) {
+        dlg_alert(3, r == -2 ? "Not a session file:" : "Cannot read file:", path);
+        return;
+    }
+    for (i = 0; i < app.ndocs; i++)
+        if (!confirm_discard(app.docs[i]))
+            return;
+    while (app.ndocs)
+        remove_doc(app.docs[0]);        /* also drops their bookmarks */
+    bm_clear_all();
+
+    for (i = 0; i < ses.ndocs; i++) {
+        map[i] = (app.ndocs < MAX_DOCS) ? open_file(ses.doc[i].path, 1) : 0;
+        if (!map[i]) {
+            failed++;
+            continue;
+        }
+        d = map[i];
+        line = ses.doc[i].line;
+        if (line >= tb_line_count(&d->tb))
+            line = tb_line_count(&d->tb) - 1;
+        ls = tb_line_start(&d->tb, line);
+        le = tb_line_end(&d->tb, line);
+        ls = (ses.doc[i].col < le - ls) ? ls + ses.doc[i].col : le;
+        win_show(d, ls, ls);
+    }
+    for (i = 0; i < BM_MAX; i++) {
+        if (ses.bm_doc[i] < 0 || !(d = map[ses.bm_doc[i]]))
+            continue;
+        line = ses.bm_line[i];
+        if (line >= tb_line_count(&d->tb))
+            line = tb_line_count(&d->tb) - 1;
+        bm_set(i, d, tb_line_start(&d->tb, line));
+    }
+    if (ses.top >= 0 && map[ses.top])
+        win_set_top(map[ses.top]);
+    if (failed) {
+        sprintf(msg, "%d file(s) could not be opened.", failed);
+        dlg_alert(1, "Session loaded, but", msg);
+    }
+    if (app.ndocs == 0)
+        cmd_new();
 }
 
 /* ------------------------------------------------------------------ */
@@ -360,6 +481,8 @@ void cmd_execute(int cmd)
     case CMD_NEW:       cmd_new();  return;
     case CMD_OPEN:      cmd_open(); return;
     case CMD_QUIT:      cmd_quit(); return;
+    case CMD_SESLOAD:   cmd_load_session(); return;
+    case CMD_SESSAVE:   if (app.ndocs) cmd_save_session(); return;
     case CMD_NEXTWIN:   next_window(d); return;
     case CMD_SAVEALL:   cmd_save_all(); return;
     case CMD_REPLFILES: if (app.ndocs) cmd_replace_files(); return;

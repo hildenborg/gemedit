@@ -5,11 +5,11 @@
 #include "menu.h"
 #include "window.h"
 
+#define SC_ESC    0x01
 #define SC_BS     0x0E
 #define SC_TAB    0x0F
 #define SC_RET    0x1C
 #define SC_ENTER  0x72
-#define SC_UNDO   0x61
 #define SC_UP     0x48
 #define SC_DOWN   0x50
 #define SC_LEFT   0x4B
@@ -20,6 +20,17 @@
 #define SC_CRIGHT 0x74          /* Ctrl+Right */
 #define SC_CEND   0x75          /* Ctrl+End   */
 #define SC_CHOME  0x77          /* Ctrl+Home  */
+
+/* The ST has no End / Page Up / Page Down keys.  Hatari (symbolic keymap,
+ * the default) sends End as the ST Undo key and Page Up / Page Down as the
+ * keypad ( and ) keys; PC keyboard interfaces (ARAnyM, Eiffel, Milan) send
+ * the PC scan codes.  Both are accepted. */
+#define SC_END    0x4F
+#define SC_PGUP   0x49
+#define SC_PGDN   0x51
+#define SC_UNDO   0x61          /* ST Undo   = Hatari End       */
+#define SC_KPLPAR 0x63          /* keypad (  = Hatari Page Up   */
+#define SC_KPRPAR 0x64          /* keypad )  = Hatari Page Down */
 
 /* Set stack and memory limits for the application.
  * There needs to be some memory left for GEM to allocate outside the program space. */
@@ -62,6 +73,8 @@ static int ctrl_shift_cmd(int letter)
     case 's': return CMD_SAVEALL;
     case 'f': return CMD_FINDALL;
     case 'h': return CMD_REPLFILES;
+    case 'o': return CMD_SESLOAD;
+    case 'w': return CMD_SESSAVE;
     }
     return CMD_NONE;
 }
@@ -82,17 +95,74 @@ static int fkey_slot(int scan, int ks, int *set)
     return -1;
 }
 
+/* Cursor keys that are recognised by scan code alone, whatever the
+ * Ctrl state and ASCII value.  Returns 1 if the key was handled. */
+static int nav_key(Doc *d, int scan, gint ks)
+{
+    int ext = (ks & KS_SHIFT) != 0, ctrl = (ks & KS_CTRL) != 0;
+    long dl = 0, dc = 0;
+
+    if ((ks & KS_ALT) && ext) {                 /* Shift+Alt: column selection */
+        switch (scan) {
+        case SC_UP:     dl = -1; break;
+        case SC_DOWN:   dl = 1;  break;
+        case SC_LEFT:
+        case SC_CLEFT:  dc = -1; break;
+        case SC_RIGHT:
+        case SC_CRIGHT: dc = 1;  break;
+        }
+        if (dl || dc) {
+            doc_col_extend(d, dl, dc);
+            win_refresh(d);
+            return 1;
+        }
+    }
+
+    switch (scan) {
+    case SC_UP:
+    case SC_DOWN:
+        if (!(ks & KS_ALT))
+            return 0;
+        win_page(d, scan == SC_DOWN, 0);        /* Alt+Up/Down = page */
+        return 1;
+    case SC_PGUP:
+    case SC_KPLPAR:
+        win_page(d, 0, ext);
+        return 1;
+    case SC_PGDN:
+    case SC_KPRPAR:
+        win_page(d, 1, ext);
+        return 1;
+    case SC_HOME:   doc_move(d, ctrl ? MV_TOP : MV_HOME, ext);    break;
+    case SC_CHOME:  doc_move(d, MV_TOP, ext);                     break;
+    case SC_END:
+    case SC_UNDO:   doc_move(d, ctrl ? MV_BOTTOM : MV_END, ext);  break;
+    case SC_CEND:   doc_move(d, MV_BOTTOM, ext);                  break;
+    case SC_ESC:
+        if (!d->colsel)
+            return 0;
+        doc_col_off(d);                         /* Esc: back to one caret */
+        break;
+    default:
+        return 0;
+    }
+    win_refresh(d);
+    return 1;
+}
+
 static void handle_key(gint key, gint ks)
 {
     unsigned k = (unsigned)key & 0xFFFF;
     int scan = (int)((k >> 8) & 0xFF), asc = (int)(k & 0xFF), cmd;
     int ext = (ks & KS_SHIFT) != 0, slot, set = 0;
-    Doc *d;
+    Doc *d = app_top_doc();
+
+    if (d && nav_key(d, scan, ks))
+        return;
 
     if ((ks & KS_CTRL) && asc >= 1 && asc <= 26 &&
         scan != SC_BS && scan != SC_TAB && scan != SC_RET && scan != SC_ENTER) {
         if (asc == 5) {                         /* Ctrl+E = end of line */
-            d = app_top_doc();
             if (d) {
                 doc_move(d, MV_END, ext);
                 win_refresh(d);
@@ -106,31 +176,22 @@ static void handle_key(gint key, gint ks)
             cmd_execute(cmd);
         return;
     }
-    if (scan == SC_UNDO) {                      /* the ST "Undo" key */
-        cmd_execute(CMD_UNDO);
-        return;
-    }
-
     slot = fkey_slot(scan, ks, &set);
     if (slot >= 0) {                            /* bookmarks */
         cmd_execute((set ? CMD_BMSET0 : CMD_BMGO0) + slot);
         return;
     }
 
-    d = app_top_doc();
     if (!d)
         return;
 
     switch (scan) {
-    case SC_UP:     doc_move(d, (ks & KS_ALT) ? MV_PGUP : MV_UP, ext);   break;
-    case SC_DOWN:   doc_move(d, (ks & KS_ALT) ? MV_PGDN : MV_DOWN, ext); break;
-    case SC_LEFT:   doc_move(d, MV_LEFT, ext);   break;
-    case SC_RIGHT:  doc_move(d, MV_RIGHT, ext);  break;
-    case SC_HOME:   doc_move(d, MV_HOME, ext);   break;
+    case SC_UP:     doc_move(d, MV_UP, ext);     break;
+    case SC_DOWN:   doc_move(d, MV_DOWN, ext);   break;
+    case SC_LEFT:   doc_move(d, (ks & KS_CTRL) ? MV_WORDL : MV_LEFT, ext);  break;
+    case SC_RIGHT:  doc_move(d, (ks & KS_CTRL) ? MV_WORDR : MV_RIGHT, ext); break;
     case SC_CLEFT:  doc_move(d, MV_WORDL, ext);  break;
     case SC_CRIGHT: doc_move(d, MV_WORDR, ext);  break;
-    case SC_CHOME:  doc_move(d, MV_TOP, ext);    break;
-    case SC_CEND:   doc_move(d, MV_BOTTOM, ext); break;
     case SC_DEL:    doc_delete(d);    break;
     case SC_BS:     doc_backspace(d); break;
     case SC_RET:
@@ -138,7 +199,7 @@ static void handle_key(gint key, gint ks)
     case SC_TAB:
         if (ks & KS_SHIFT)
             doc_unindent(d);                    /* Shift-Tab: remove one indent */
-        else if (doc_sel_range(d, 0, 0))
+        else if (doc_has_sel(d))
             doc_indent(d);                      /* Tab on a selection: indent   */
         else
             doc_type(d, '\t');

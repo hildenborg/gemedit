@@ -35,6 +35,9 @@ static const MItem m_file[] = {
     { CMD_SAVEAS, "Save As...",  ""   },
     { CMD_SAVEALL,"Save All",    "S^S" },
     { CMD_SEP, 0, 0 },
+    { CMD_SESLOAD,"Load Session...", "S^O" },
+    { CMD_SESSAVE,"Save Session...", "S^W" },
+    { CMD_SEP, 0, 0 },
     { CMD_QUIT,   "Quit",        "^Q" }
 };
 static const MItem m_edit[] = {
@@ -265,7 +268,6 @@ void menu_sync(void)
 {
     Doc *top = app_top_doc();
     int has = top != 0, i, o, anymod = 0;
-    long s, e;
 
     for (i = 0; i < app.ndocs; i++)
         if (app.docs[i]->modified)
@@ -277,8 +279,9 @@ void menu_sync(void)
     set_enable(CMD_SAVEALL,  anymod);
     set_enable(CMD_UNDO,     has && undo_can_undo(&top->undo));
     set_enable(CMD_REDO,     has && undo_can_redo(&top->undo));
-    set_enable(CMD_CUT,      has && doc_sel_range(top, &s, &e));
-    set_enable(CMD_COPY,     has && doc_sel_range(top, &s, &e));
+    set_enable(CMD_SESSAVE,  app.ndocs > 0);
+    set_enable(CMD_CUT,      has && doc_has_sel(top));
+    set_enable(CMD_COPY,     has && doc_has_sel(top));
     set_enable(CMD_PASTE,    has && clip_len() > 0);
     set_enable(CMD_SELALL,   has);
     set_enable(CMD_FIND,     has);

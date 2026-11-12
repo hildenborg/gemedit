@@ -28,7 +28,7 @@ Dependencies point downwards only; the lower layer has no GEM calls.
 | Entry / events | `main.c` | `evnt_multi` loop, key and AES message dispatch |
 | Actions | `commands.c/h` | every user action is a `CMD_xxx` run by `cmd_execute()` |
 | UI | `menu.c/h`, `dialog.c/h`, `window.c/h`, `app.c/h` | GEM only |
-| Model (no GEM) | `doc.c/h`, `bookmark.c/h`, `textbuf.c/h`, `undo.c/h`, `clip.c/h` | portable C |
+| Model (no GEM) | `doc.c/h`, `bookmark.c/h`, `textbuf.c/h`, `undo.c/h`, `clip.c/h`, `session.c/h` | portable C |
 
 - **Adding a feature**: add a `CMD_xxx` in `commands.h`, implement it in
   `commands.c`, add a menu entry in the tables in `menu.c`, and a key in
@@ -77,6 +77,12 @@ Dependencies point downwards only; the lower layer has no GEM calls.
   and adjusting `ob_y` / box `ob_height` in `menu_sync()`.
 - Shift+F1..F10 arrive as scan codes 0x54..0x5D on real hardware, but some
   emulators send 0x3B..0x44 plus the shift bit; `fkey_slot()` accepts both.
+- Hatari's default (symbolic) keymap sends End as ST Undo (0x61) and
+  Page Up/Down as keypad `(` `)` (0x63/0x64); `nav_key()` in `main.c` maps
+  those and the PC codes (0x4F/0x49/0x51) before the Ctrl+letter dispatch.
+- **Column selection** (`d->colsel`): per-line caret offsets in `cs_off`.
+  Any edit not made by a column operation ends it (`raw_insert`/`raw_delete`
+  check `cs_busy`), and so do `doc_set_cursor` / `doc_select`.
 - Ctrl shortcuts test the ASCII code (1..26), not the scan code, so they
   follow national keyboard layouts.
 - At most 8 windows on plain TOS (`MAX_DOCS`).

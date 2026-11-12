@@ -97,6 +97,25 @@ static void draw_line(Doc *d, const Rect *w, long line, long row, int has_sel,
         v_gtext(app.vh, w->x, y, xbuf);
     }
 
+    if (d->colsel) {                            /* box: one caret per line */
+        if (doc_col_line(d, line, &a, &b, &c)) {
+            if (b > a) {
+                a = doc_vcol(d, line, a) - d->left_col;
+                b = doc_vcol(d, line, b) - d->left_col;
+                if (a < 0) a = 0;
+                if (b > d->page_cols + 1) b = d->page_cols + 1;
+                if (b > a)
+                    fill_xor((gint)(w->x + a * app.cw), y,
+                             (gint)(w->x + b * app.cw - 1), (gint)(y + app.ch - 1));
+            }
+            c = doc_vcol(d, line, c) - d->left_col;
+            if (c >= 0 && c <= d->page_cols)
+                fill_xor((gint)(w->x + c * app.cw), y,
+                         (gint)(w->x + c * app.cw + 1), (gint)(y + app.ch - 1));
+        }
+        return;
+    }
+
     if (has_sel && se > ls && ss <= le) {
         a = (ss <= ls) ? 0 : doc_vcol(d, line, ss);
         b = (se > le) ? doc_vcol(d, line, le) + 1 : doc_vcol(d, line, se);
@@ -362,6 +381,22 @@ void win_refresh(Doc *d)
     update_title(d, 0);
 }
 
+/* Page Up / Page Down: the caret moves a page and the text scrolls with it,
+ * so the caret keeps its row in the window. */
+void win_page(Doc *d, int down, int extend)
+{
+    long ol = tb_line_of(&d->tb, d->cursor);
+
+    doc_move(d, down ? MV_PGDN : MV_PGUP, extend);
+    if (d->whandle < 0)
+        return;
+    d->top_line += tb_line_of(&d->tb, d->cursor) - ol;
+    clamp_scroll(d);
+    d->dirty_lo = 0;
+    d->dirty_hi = LINE_ALL;
+    win_refresh(d);
+}
+
 /* Select [anchor,cursor] and make sure it is visible; if it was off screen the
  * line is centred (used by Find and by bookmark jumps). */
 void win_show(Doc *d, long anchor, long cursor)
@@ -503,6 +538,45 @@ static long pos_at(Doc *d, const Rect *w, gint mx, gint my)
     return doc_pos_at_col(d, line, col);
 }
 
+/* line and (unclamped) visual column under the mouse, for box selection */
+static void col_at(Doc *d, const Rect *w, gint mx, gint my, long *line, long *col)
+{
+    *line = d->top_line + floor_div((long)my - w->y, app.ch);
+    *col = d->left_col + floor_div((long)mx - w->x + app.cw / 2, app.cw);
+    if (*line < 0) *line = 0;
+    if (*line >= tb_line_count(&d->tb)) *line = tb_line_count(&d->tb) - 1;
+    if (*col < 0) *col = 0;
+}
+
+/* Shift+Alt click / drag: box from the current anchor to the mouse. */
+static void col_drag(Doc *d, const Rect *w, gint mx, gint my)
+{
+    gint x, y, b, k;
+    long line, col, ll, lc;
+    int outside;
+
+    col_at(d, w, mx, my, &line, &col);
+    doc_col_select_to(d, line, col);
+    win_refresh(d);
+    ll = line;
+    lc = col;
+    for (;;) {
+        graf_mkstate(&x, &y, &b, &k);
+        if (!(b & 1))
+            break;
+        outside = (x < w->x || y < w->y || x >= w->x + w->w || y >= w->y + w->h);
+        col_at(d, w, x, y, &line, &col);
+        if (line != ll || col != lc) {
+            ll = line;
+            lc = col;
+            doc_col_select_to(d, line, col);
+            win_refresh(d);
+        }
+        if (outside)
+            evnt_timer(40, 0);                  /* throttle auto-scroll */
+    }
+}
+
 int win_click(Doc *d, gint mx, gint my, gint ks, gint clicks)
 {
     Rect w;
@@ -514,6 +588,10 @@ int win_click(Doc *d, gint mx, gint my, gint ks, gint clicks)
     if (mx < w.x || my < w.y || mx >= w.x + w.w || my >= w.y + w.h)
         return 0;
 
+    if ((ks & KS_SHIFT) && (ks & KS_ALT)) {
+        col_drag(d, &w, mx, my);
+        return 1;
+    }
     pos = pos_at(d, &w, mx, my);
     if (clicks > 1) {
         doc_select_word(d, pos);

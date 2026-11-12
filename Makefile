@@ -10,7 +10,7 @@ LDFLAGS :=
 CFLAGS := -Wall -Os -g -m$(CPU) -DNO_FSEL_EXINPUT
 ASFLAGS := -g --register-prefix-optional -mcpu=$(CPU)
 
-SOURCES := main.c app.c commands.c menu.c dialog.c window.c doc.c textbuf.c undo.c clip.c bookmark.c
+SOURCES := main.c app.c commands.c menu.c dialog.c window.c doc.c textbuf.c undo.c clip.c bookmark.c session.c
 
 # Toolchain command settings
 # Project build architecture settings
@@ -51,8 +51,9 @@ all:	$(BUILD_DIR) $(TARGET_PRG)
 B := $(BUILD_DIR)
 $(B)/main.o $(B)/app.o $(B)/commands.o $(B)/menu.o $(B)/dialog.o $(B)/window.o: gemcompat.h app.h doc.h
 $(B)/doc.o: doc.h textbuf.h undo.h clip.h bookmark.h
-$(B)/bookmark.o $(B)/app.o $(B)/commands.o $(B)/menu.o: bookmark.h
+$(B)/bookmark.o $(B)/app.o $(B)/commands.o $(B)/menu.o: bookmark.h doc.h textbuf.h undo.h
 $(B)/commands.o $(B)/menu.o $(B)/main.o: commands.h
+$(B)/session.o $(B)/commands.o: session.h doc.h bookmark.h
 
 clean:
 	$(shell rm -r $(BUILD_DIR))

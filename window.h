@@ -13,6 +13,7 @@ void win_redraw(Doc *d, const Rect *r); /* WM_REDRAW                    */
 void win_refresh(Doc *d);               /* after any edit/cursor change */
 void win_layout(Doc *d);                /* after size change            */
 void win_show(Doc *d, long anchor, long cursor);   /* select + make visible */
+void win_page(Doc *d, int down, int extend);        /* Page Up / Page Down   */
 
 void win_arrowed(Doc *d, gint what);    /* WM_ARROWED                   */
 void win_vslid(Doc *d, gint pos);       /* WM_VSLID                     */

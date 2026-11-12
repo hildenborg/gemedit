@@ -27,6 +27,19 @@ typedef struct Doc {
 
     long dirty_lo, dirty_hi;    /* lines needing redraw, -1 = none           */
 
+    /* column (box) selection, Shift+Alt.  The box runs from the anchor
+     * corner (cs_al, cs_avc) to the caret corner (cs_cl, cs_cvc) in visual
+     * columns.  Every line from min(cs_al,cs_cl) has a caret and selection
+     * stored as two offsets from the line start in cs_off[2*i], cs_off[2*i+1]
+     * (anchor, caret); -1 = line too short, no caret.  While active,
+     * cursor == anchor == the caret corner (used for scrolling and info). */
+    int   colsel;
+    int   cs_busy;              /* edits are part of a column operation      */
+    long  cs_al, cs_cl;
+    long  cs_avc, cs_cvc;
+    long *cs_off;
+    long  cs_cap;               /* lines allocated in cs_off                 */
+
     /* view state, owned by window.c */
     int  whandle;
     long top_line, left_col;
@@ -55,11 +68,18 @@ void  doc_mark_view_change(Doc *d, long old_cursor, long old_anchor);
 
 /* selection / cursor */
 int   doc_sel_range(const Doc *d, long *s, long *e);   /* returns 1 if non-empty */
+int   doc_has_sel(const Doc *d);       /* normal or column selection non-empty */
 void  doc_set_cursor(Doc *d, long pos, int extend);
 void  doc_select(Doc *d, long a, long b);
 void  doc_select_all(Doc *d);
 void  doc_select_word(Doc *d, long pos);
 void  doc_move(Doc *d, int kind, int extend);
+
+/* column selection */
+void  doc_col_select_to(Doc *d, long line, long vcol);  /* box from anchor to here */
+void  doc_col_extend(Doc *d, long dline, long dvcol);   /* move the caret corner   */
+void  doc_col_off(Doc *d);                              /* back to a single caret  */
+int   doc_col_line(const Doc *d, long line, long *s, long *e, long *caret);
 
 /* editing */
 void  doc_type(Doc *d, int ch);

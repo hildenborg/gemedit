@@ -73,6 +73,35 @@ int doc_sel_range(const Doc *d, long *s, long *e)
     return d->anchor != d->cursor;
 }
 
+#define CS_LO(d) ((d)->cs_al < (d)->cs_cl ? (d)->cs_al : (d)->cs_cl)
+#define CS_HI(d) ((d)->cs_al < (d)->cs_cl ? (d)->cs_cl : (d)->cs_al)
+
+int doc_has_sel(const Doc *d)
+{
+    long i;
+    if (!d->colsel)
+        return doc_sel_range(d, 0, 0);
+    for (i = 0; i <= CS_HI(d) - CS_LO(d); i++)
+        if (d->cs_off[2 * i] >= 0 && d->cs_off[2 * i] != d->cs_off[2 * i + 1])
+            return 1;
+    return 0;
+}
+
+static void cs_mark(Doc *d)
+{
+    if (d->colsel)
+        mark(d, CS_LO(d), CS_HI(d));
+}
+
+void doc_col_off(Doc *d)
+{
+    if (!d->colsel)
+        return;
+    cs_mark(d);
+    d->colsel = 0;
+    d->anchor = d->cursor;
+}
+
 /* Called by the window layer: mark every line whose cursor/selection
  * look changed since the last draw. */
 void doc_mark_view_change(Doc *d, long oc, long oa)
@@ -124,6 +153,7 @@ void doc_free(Doc *d)
         return;
     undo_clear(&d->undo);
     tb_free(&d->tb);
+    free(d->cs_off);
     free(d);
 }
 
@@ -241,7 +271,10 @@ int doc_save(Doc *d, const char *path)
 
 static int raw_insert(Doc *d, long pos, const char *s, long n)
 {
-    long l = tb_line_of(&d->tb, pos), k = 0, i;
+    long l, k = 0, i;
+    if (!d->cs_busy)
+        doc_col_off(d);         /* edits from elsewhere end a column selection */
+    l = tb_line_of(&d->tb, pos);
     for (i = 0; i < n; i++)
         if (s[i] == '\n')
             k++;
@@ -259,7 +292,11 @@ static int raw_insert(Doc *d, long pos, const char *s, long n)
 
 static void raw_delete(Doc *d, long pos, long n)
 {
-    long l1 = tb_line_of(&d->tb, pos), l2 = tb_line_of(&d->tb, pos + n);
+    long l1, l2;
+    if (!d->cs_busy)
+        doc_col_off(d);
+    l1 = tb_line_of(&d->tb, pos);
+    l2 = tb_line_of(&d->tb, pos + n);
     tb_delete(&d->tb, pos, n);
     bm_after_delete(d, pos, n);
     mark(d, l1, l2 > l1 ? LINE_ALL : l1);
@@ -309,6 +346,362 @@ static void edit_delete(Doc *d, long pos, long n, int chain, int mode)
 }
 
 /* ------------------------------------------------------------------ */
+/* column (box) selection                                              */
+/* ------------------------------------------------------------------ */
+
+/* Absolute anchor/caret of block line i (0 = CS_LO); 0 if it has no caret. */
+static int cs_get(Doc *d, long i, long *ls, long *a, long *c)
+{
+    long le;
+    if (d->cs_off[2 * i] < 0)
+        return 0;
+    *ls = tb_line_start(&d->tb, CS_LO(d) + i);
+    le = tb_line_end(&d->tb, CS_LO(d) + i);
+    *a = *ls + d->cs_off[2 * i];
+    *c = *ls + d->cs_off[2 * i + 1];
+    if (*a > le) *a = le;
+    if (*c > le) *c = le;
+    return 1;
+}
+
+static void cs_put(Doc *d, long i, long ls, long a, long c)
+{
+    d->cs_off[2 * i] = a - ls;
+    d->cs_off[2 * i + 1] = c - ls;
+}
+
+/* Lay out the carets from the box corners.  Like VS Code, lines that end
+ * before the left edge of the box get no caret (unless no line has one). */
+static int cs_build(Doc *d)
+{
+    long lo = CS_LO(d), n = CS_HI(d) - lo + 1, i, ln, ls, left;
+    long *p;
+    int any = 0;
+
+    if (n > d->cs_cap) {
+        p = (long *)realloc(d->cs_off, n * 2 * sizeof(long));
+        if (!p) {
+            d->error = 1;
+            d->colsel = 0;
+            return -1;
+        }
+        d->cs_off = p;
+        d->cs_cap = n;
+    }
+    left = d->cs_avc < d->cs_cvc ? d->cs_avc : d->cs_cvc;
+    for (i = 0; i < n; i++) {
+        ln = lo + i;
+        d->cs_off[2 * i] = d->cs_off[2 * i + 1] = -1;
+        if (doc_vcol(d, ln, tb_line_end(&d->tb, ln)) < left)
+            continue;
+        ls = tb_line_start(&d->tb, ln);
+        cs_put(d, i, ls, doc_pos_at_col(d, ln, d->cs_avc),
+               doc_pos_at_col(d, ln, d->cs_cvc));
+        any = 1;
+    }
+    if (!any) {                         /* all too short: caret line gets one */
+        ln = d->cs_cl;
+        ls = tb_line_start(&d->tb, ln);
+        cs_put(d, ln - lo, ls, doc_pos_at_col(d, ln, d->cs_avc),
+               doc_pos_at_col(d, ln, d->cs_cvc));
+    }
+    d->cursor = d->anchor = doc_pos_at_col(d, d->cs_cl, d->cs_cvc);
+    return 0;
+}
+
+/* After the carets moved by themselves (typing, per-line movement):
+ * derive the box corners from them so a later Shift+Alt move continues
+ * from where the carets are. */
+static void cs_sync(Doc *d)
+{
+    long n = CS_HI(d) - CS_LO(d) + 1, i, ls, a, c, v, av = -1, cv = -1;
+    for (i = 0; i < n; i++)
+        if (cs_get(d, i, &ls, &a, &c)) {
+            v = doc_vcol(d, CS_LO(d) + i, a);
+            if (v > av) av = v;
+            v = doc_vcol(d, CS_LO(d) + i, c);
+            if (v > cv) cv = v;
+        }
+    if (cv >= 0) {
+        d->cs_avc = av;
+        d->cs_cvc = cv;
+    }
+    i = d->cs_cl - CS_LO(d);
+    if (cs_get(d, i, &ls, &a, &c))
+        d->cursor = c;
+    else
+        d->cursor = doc_pos_at_col(d, d->cs_cl, d->cs_cvc);
+    d->anchor = d->cursor;
+    d->want_col = -1;
+    d->undo.no_coalesce = 1;
+    cs_mark(d);
+}
+
+void doc_col_select_to(Doc *d, long line, long vcol)
+{
+    long n = tb_line_count(&d->tb);
+    if (d->colsel)
+        cs_mark(d);
+    else {
+        d->cs_al = tb_line_of(&d->tb, d->anchor);
+        d->cs_avc = doc_vcol(d, d->cs_al, d->anchor);
+    }
+    if (line < 0) line = 0;
+    if (line >= n) line = n - 1;
+    if (vcol < 0) vcol = 0;
+    if (vcol > 30000L) vcol = 30000L;
+    d->cs_cl = line;
+    d->cs_cvc = vcol;
+    d->colsel = 1;
+    d->want_col = -1;
+    d->undo.no_coalesce = 1;
+    if (cs_build(d) == 0)
+        cs_mark(d);
+}
+
+void doc_col_extend(Doc *d, long dline, long dvcol)
+{
+    long l, v;
+    if (d->colsel) {
+        l = d->cs_cl;
+        v = d->cs_cvc;
+    } else {
+        l = tb_line_of(&d->tb, d->cursor);
+        v = doc_vcol(d, l, d->cursor);
+    }
+    doc_col_select_to(d, l + dline, v + dvcol);
+}
+
+int doc_col_line(const Doc *d, long line, long *s, long *e, long *caret)
+{
+    long i, ls, le, a, c;
+    if (!d->colsel || line < CS_LO(d) || line > CS_HI(d))
+        return 0;
+    i = line - CS_LO(d);
+    if (d->cs_off[2 * i] < 0)
+        return 0;
+    ls = tb_line_start(&d->tb, line);
+    le = tb_line_end(&d->tb, line);
+    a = ls + d->cs_off[2 * i];
+    c = ls + d->cs_off[2 * i + 1];
+    if (a > le) a = le;
+    if (c > le) c = le;
+    *s = a < c ? a : c;
+    *e = a < c ? c : a;
+    *caret = c;
+    return 1;
+}
+
+/* Replace every caret's selection with text that has no newline: the same
+ * text on every line, or with 'spread' line k of the text on caret k (the
+ * text then has exactly one line per caret).  One undo step. */
+static void col_replace(Doc *d, const char *s, long n, int spread)
+{
+    long nl = CS_HI(d) - CS_LO(d) + 1, i, ls, a, c, p, q, k;
+    const char *t = s;
+    int first = 1;
+
+    d->cs_busy = 1;
+    for (i = 0; i < nl; i++) {
+        if (!cs_get(d, i, &ls, &a, &c))
+            continue;
+        if (spread) {
+            for (k = 0; t + k < s + n && t[k] != '\n'; k++)
+                ;
+        } else
+            k = n;
+        p = a < c ? a : c;
+        q = a < c ? c : a;
+        if (q > p) {
+            edit_delete(d, p, q - p, !first, 0);
+            first = 0;
+        }
+        if (k > 0) {
+            edit_insert(d, p, t, k, !first, 0);
+            first = 0;
+        }
+        cs_put(d, i, ls, p + k, p + k);
+        if (spread)
+            t += k + 1;
+        if (d->error)
+            break;
+    }
+    d->cs_busy = 0;
+    cs_sync(d);
+}
+
+/* Insert text containing newlines at every caret (or, with 'indent', a
+ * newline plus the line's indentation).  Lines are added, so the box cannot
+ * survive: the column selection ends with the caret after the top insert. */
+static void col_insert_lines(Doc *d, const char *s, long n, int indent)
+{
+    char buf[136];
+    long nl = CS_HI(d) - CS_LO(d) + 1, i, ls, a, c, p, q, x;
+    int first = 1, k;
+
+    cs_mark(d);
+    d->cs_busy = 1;
+    for (i = nl - 1; i >= 0; i--) {             /* bottom up: offsets above stay valid */
+        if (!cs_get(d, i, &ls, &a, &c))
+            continue;
+        p = a < c ? a : c;
+        q = a < c ? c : a;
+        if (q > p) {
+            edit_delete(d, p, q - p, !first, 0);
+            first = 0;
+        }
+        if (indent) {
+            buf[0] = '\n';
+            k = 1;
+            for (x = ls; x < p && k < 128; x++) {
+                if (tb_at(&d->tb, x) != ' ' && tb_at(&d->tb, x) != '\t')
+                    break;
+                buf[k++] = (char)tb_at(&d->tb, x);
+            }
+            edit_insert(d, p, buf, k, !first, 0);
+        } else
+            edit_insert(d, p, s, n, !first, 0);
+        first = 0;
+        if (d->error)
+            break;
+    }
+    d->cs_busy = 0;
+    d->colsel = 0;
+    d->anchor = d->cursor;
+    d->want_col = -1;
+    d->undo.no_coalesce = 1;
+}
+
+/* Backspace (dir < 0) or Delete (dir > 0) at every caret.  A non-empty
+ * selection is removed; otherwise one character, never joining lines. */
+static void col_erase(Doc *d, int dir)
+{
+    long nl = CS_HI(d) - CS_LO(d) + 1, i, ls, le, a, c, p, q;
+    int first = 1;
+
+    d->cs_busy = 1;
+    for (i = 0; i < nl; i++) {
+        if (!cs_get(d, i, &ls, &a, &c))
+            continue;
+        p = a < c ? a : c;
+        q = a < c ? c : a;
+        if (q == p) {
+            le = tb_line_end(&d->tb, CS_LO(d) + i);
+            if (dir < 0 && p > ls)
+                p--;
+            else if (dir > 0 && q < le)
+                q++;
+        }
+        if (q > p) {
+            edit_delete(d, p, q - p, !first, 0);
+            first = 0;
+        }
+        cs_put(d, i, ls, p, p);
+        if (d->error)
+            break;
+    }
+    d->cs_busy = 0;
+    cs_sync(d);
+}
+
+/* Left/Right/Home/End/word moves, applied to every caret within its line. */
+static void col_move(Doc *d, int kind, int extend)
+{
+    long nl = CS_HI(d) - CS_LO(d) + 1, i, ls, le, a, c;
+
+    cs_mark(d);
+    for (i = 0; i < nl; i++) {
+        if (!cs_get(d, i, &ls, &a, &c))
+            continue;
+        le = tb_line_end(&d->tb, CS_LO(d) + i);
+        switch (kind) {
+        case MV_LEFT:
+            if (a != c && !extend) c = a < c ? a : c;
+            else if (c > ls) c--;
+            break;
+        case MV_RIGHT:
+            if (a != c && !extend) c = a < c ? c : a;
+            else if (c < le) c++;
+            break;
+        case MV_HOME: c = ls; break;
+        case MV_END:  c = le; break;
+        case MV_WORDL:
+            while (c > ls && !isw(tb_at(&d->tb, c - 1))) c--;
+            while (c > ls && isw(tb_at(&d->tb, c - 1))) c--;
+            break;
+        case MV_WORDR:
+            while (c < le && !isw(tb_at(&d->tb, c))) c++;
+            while (c < le && isw(tb_at(&d->tb, c))) c++;
+            break;
+        }
+        cs_put(d, i, ls, extend ? a : c, c);
+    }
+    cs_sync(d);
+}
+
+static int col_copy(Doc *d)
+{
+    long nl = CS_HI(d) - CS_LO(d) + 1, i, ls, a, c, p, q, total = 0, o = 0;
+    char *tmp;
+    int r, first = 1;
+
+    if (!doc_has_sel(d))
+        return 0;
+    for (i = 0; i < nl; i++)
+        if (cs_get(d, i, &ls, &a, &c))
+            total += (a < c ? c - a : a - c) + 1;
+    tmp = (char *)malloc(total);
+    if (!tmp) {
+        d->error = 1;
+        return 0;
+    }
+    for (i = 0; i < nl; i++) {                  /* one line per caret */
+        if (!cs_get(d, i, &ls, &a, &c))
+            continue;
+        p = a < c ? a : c;
+        q = a < c ? c : a;
+        if (!first)
+            tmp[o++] = '\n';
+        first = 0;
+        tb_copy(&d->tb, p, q - p, tmp + o);
+        o += q - p;
+    }
+    r = clip_set(tmp, o);
+    free(tmp);
+    if (r)
+        d->error = 1;
+    return r == 0;
+}
+
+static int col_paste(Doc *d)
+{
+    const char *t = clip_get();
+    long n = clip_len(), tl = n, i, lines = 1, carets = 0, ls, a, c;
+    int nlf = 0;
+
+    if (n <= 0)
+        return 0;
+    if (t[tl - 1] == '\n')                      /* a final newline does not count */
+        tl--;
+    for (i = 0; i < n; i++)
+        if (t[i] == '\n') {
+            nlf = 1;
+            if (i < tl)
+                lines++;
+        }
+    for (i = 0; i <= CS_HI(d) - CS_LO(d); i++)
+        if (cs_get(d, i, &ls, &a, &c))
+            carets++;
+    if (carets > 1 && lines == carets)
+        col_replace(d, t, tl, 1);               /* one line per caret */
+    else if (!nlf)
+        col_replace(d, t, n, 0);
+    else
+        col_insert_lines(d, t, n, 0);
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* public editing commands                                             */
 /* ------------------------------------------------------------------ */
 
@@ -316,6 +709,10 @@ void doc_type(Doc *d, int ch)
 {
     char c = (char)ch;
     long s, e;
+    if (d->colsel) {
+        col_replace(d, &c, 1L, 0);
+        return;
+    }
     if (doc_sel_range(d, &s, &e)) {
         edit_delete(d, s, e - s, 0, 0);
         edit_insert(d, s, &c, 1, 1, 0);
@@ -330,6 +727,10 @@ void doc_newline(Doc *d)
     long s, e, ls, p;
     int n = 1, had = 0, c;
 
+    if (d->colsel) {
+        col_insert_lines(d, 0, 0L, 1);
+        return;
+    }
     if (doc_sel_range(d, &s, &e)) {
         edit_delete(d, s, e - s, 0, 0);
         had = 1;
@@ -349,7 +750,9 @@ void doc_newline(Doc *d)
 void doc_backspace(Doc *d)
 {
     long s, e;
-    if (doc_sel_range(d, &s, &e))
+    if (d->colsel)
+        col_erase(d, -1);
+    else if (doc_sel_range(d, &s, &e))
         edit_delete(d, s, e - s, 0, 0);
     else if (d->cursor > 0)
         edit_delete(d, d->cursor - 1, 1, 0, 1);
@@ -359,7 +762,9 @@ void doc_backspace(Doc *d)
 void doc_delete(Doc *d)
 {
     long s, e;
-    if (doc_sel_range(d, &s, &e))
+    if (d->colsel)
+        col_erase(d, 1);
+    else if (doc_sel_range(d, &s, &e))
         edit_delete(d, s, e - s, 0, 0);
     else if (d->cursor < tb_len(&d->tb))
         edit_delete(d, d->cursor, 1, 0, 2);
@@ -371,6 +776,8 @@ int doc_copy(Doc *d)
     long s, e;
     char *tmp;
     int r;
+    if (d->colsel)
+        return col_copy(d);
     if (!doc_sel_range(d, &s, &e))
         return 0;
     tmp = (char *)malloc(e - s);
@@ -391,6 +798,10 @@ int doc_cut(Doc *d)
     long s, e;
     if (!doc_copy(d))
         return 0;
+    if (d->colsel) {
+        col_replace(d, "", 0L, 0);
+        return 1;
+    }
     doc_sel_range(d, &s, &e);
     edit_delete(d, s, e - s, 0, 0);
     d->want_col = -1;
@@ -403,6 +814,8 @@ int doc_paste(Doc *d)
     int had = 0;
     if (n <= 0)
         return 0;
+    if (d->colsel)
+        return col_paste(d);
     if (doc_sel_range(d, &s, &e)) {
         edit_delete(d, s, e - s, 0, 0);
         had = 1;
@@ -469,6 +882,7 @@ int doc_redo(Doc *d)
 static void set_cursor(Doc *d, long pos, int extend, int keep_want)
 {
     long len = tb_len(&d->tb);
+    doc_col_off(d);
     if (pos < 0) pos = 0;
     if (pos > len) pos = len;
     d->cursor = pos;
@@ -487,6 +901,7 @@ void doc_set_cursor(Doc *d, long pos, int extend)
 void doc_select(Doc *d, long a, long b)
 {
     long len = tb_len(&d->tb);
+    doc_col_off(d);
     if (a < 0) a = 0;
     if (b < 0) b = 0;
     if (a > len) a = len;
@@ -521,8 +936,20 @@ void doc_select_word(Doc *d, long pos)
 
 void doc_move(Doc *d, int kind, int extend)
 {
-    long pos = d->cursor, len = tb_len(&d->tb), line, s, e, n;
-    int hassel = doc_sel_range(d, &s, &e), vertical = 0;
+    long pos, len = tb_len(&d->tb), line, ol, s, e, n, nlines;
+    int hassel, vertical = 0;
+
+    if (d->colsel) {
+        if (kind == MV_LEFT || kind == MV_RIGHT || kind == MV_HOME ||
+            kind == MV_END || kind == MV_WORDL || kind == MV_WORDR) {
+            col_move(d, kind, extend);
+            return;
+        }
+        doc_col_off(d);                         /* vertical moves: one caret */
+    }
+    pos = d->cursor;
+    hassel = doc_sel_range(d, &s, &e);
+    nlines = tb_line_count(&d->tb);
 
     switch (kind) {
     case MV_LEFT:
@@ -539,10 +966,15 @@ void doc_move(Doc *d, int kind, int extend)
         line = tb_line_of(&d->tb, pos);
         if (d->want_col < 0)
             d->want_col = doc_vcol(d, line, pos);
+        ol = line;
         line += (kind == MV_UP || kind == MV_PGUP) ? -n : n;
+        if (n > 1 && line < 0 && ol > 0)
+            line = 0;                   /* a page stops at the first line ... */
+        if (n > 1 && line >= nlines && ol < nlines - 1)
+            line = nlines - 1;          /* ... and at the last line           */
         if (line < 0)
             pos = 0;
-        else if (line >= tb_line_count(&d->tb))
+        else if (line >= nlines)
             pos = len;
         else
             pos = doc_pos_at_col(d, line, d->want_col);
@@ -710,7 +1142,14 @@ long doc_replace_all(Doc *d, const char *needle, const char *repl, int mc)
 static int sel_lines(Doc *d, long *l1, long *l2)
 {
     long s, e;
-    int has = doc_sel_range(d, &s, &e);
+    int has;
+    if (d->colsel) {                    /* the lines of the box */
+        *l1 = CS_LO(d);
+        *l2 = CS_HI(d);
+        doc_col_off(d);
+        return 1;
+    }
+    has = doc_sel_range(d, &s, &e);
     *l1 = tb_line_of(&d->tb, s);
     *l2 = tb_line_of(&d->tb, e);
     if (has && *l2 > *l1 && e == tb_line_start(&d->tb, *l2))
