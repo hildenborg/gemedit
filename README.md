@@ -2,6 +2,7 @@
 
 A multi-document text editor in C using GEM AES + VDI. Menus and dialogs are
 built in code, so no `.RSC` file is needed.
+Written mainly by using Claude AI.
 
 ## Source layout
 
@@ -21,6 +22,13 @@ built in code, so no `.RSC` file is needed.
 | `gemcompat.h` | gemlib / Pure C differences in one place |
 
 ## Build
+
+For m68k-atari-elf toolchain:
+
+    ./vscode
+    SHIFT-CTRL-B
+
+For m68k-atari-mint-gcc + gemlib:
 
     make                                  # m68k-atari-mint-gcc + gemlib
     make CFLAGS="-O2 -DNO_FSEL_EXINPUT"   # for plain TOS 1.00

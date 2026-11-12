@@ -21,7 +21,16 @@
 #define SC_CEND   0x75          /* Ctrl+End   */
 #define SC_CHOME  0x77          /* Ctrl+Home  */
 
+/* Set stack and memory limits for the application.
+ * There needs to be some memory left for GEM to allocate outside the program space. */
+#ifdef __PUREC__
+#else
+#ifdef __M68K_ATARI_ELF__
 int _stksize = 1;
+#else
+long _stksize = 1;
+#endif
+#endif
 
 /* Ctrl+letter -> command. We test the ASCII value (1..26) the keyboard
  * layout delivers, so shortcuts follow the key caps on any national layout. */
