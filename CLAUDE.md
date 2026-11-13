@@ -72,6 +72,10 @@ Dependencies point downwards only; the lower layer has no GEM calls.
   *index*: root, bar, active, all titles, then the screen object, then the
   drop-down boxes in title order. Changing the creation order in
   `menu_build()` shifts every menu.
+- Drop-down boxes (and their 1 px outline) must lie fully on screen. TOS 2.06
+  does not clip the area it saves under a drop-down; the Desk box at x = 0
+  caused a bus error there (EmuTOS clips, so it hid the bug). `add_box()`
+  keeps x >= 1.
 - Menu item text must be padded to the full drop-down width (`item_w`).
 - Dynamic lists (Window, Bookmarks) are done by hiding items with `HIDETREE`
   and adjusting `ob_y` / box `ob_height` in `menu_sync()`.

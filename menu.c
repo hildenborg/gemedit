@@ -124,8 +124,11 @@ static int add_box(int screen, int x)
     int bw = item_w * app.cw, b;
     if (x + bw + 2 > app.scrw)
         x = app.scrw - bw - 2;
-    if (x < 0)
-        x = 0;
+    /* Keep the 1 pixel outline on screen: TOS 2.06 does not clip the area it
+     * saves under a drop-down, and a box at x = 0 (outline at -1) makes it
+     * read past the end of screen memory (bus error on the Desk menu). */
+    if (x < 1)
+        x = 1;
     b = new_obj(G_BOX, NONE, NORMAL, SOLID_WHITE_BOX, x, 0, bw, app.ch);
     objc_add(tree, screen, b);
     return b;
