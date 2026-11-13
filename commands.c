@@ -474,9 +474,9 @@ void cmd_execute(int cmd)
 
     switch (cmd) {
     case CMD_ABOUT:
-        form_alert(1, "[1][GEM Text Editor 1.0|Atari ST - GEM AES/VDI|"
-                      "Ctrl: N O S Q Z Y X C V F H|"
-                      "F1-F10 go, Shift+F1-F10 set][OK]");
+        form_alert(1, "[1][GEM Text Editor 1.0|Vibe coded using Claude.|"
+                      "Repository at:|"
+                      "github.com/hildenborg/gemedit][OK]");
         return;
     case CMD_NEW:       cmd_new();  return;
     case CMD_OPEN:      cmd_open(); return;
