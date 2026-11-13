@@ -415,7 +415,7 @@ static int cs_build(Doc *d)
 }
 
 /* After the carets moved by themselves (typing, per-line movement):
- * derive the box corners from them so a later Shift+Alt move continues
+ * derive the box corners from them so a later Ctrl+arrow move continues
  * from where the carets are. */
 static void cs_sync(Doc *d)
 {

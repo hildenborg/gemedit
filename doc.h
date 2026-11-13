@@ -27,7 +27,7 @@ typedef struct Doc {
 
     long dirty_lo, dirty_hi;    /* lines needing redraw, -1 = none           */
 
-    /* column (box) selection, Shift+Alt.  The box runs from the anchor
+    /* column (box) selection, Ctrl + arrows / mouse.  The box runs from the anchor
      * corner (cs_al, cs_avc) to the caret corner (cs_cl, cs_cvc) in visual
      * columns.  Every line from min(cs_al,cs_cl) has a caret and selection
      * stored as two offsets from the line start in cs_off[2*i], cs_off[2*i+1]

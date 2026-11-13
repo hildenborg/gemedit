@@ -608,7 +608,7 @@ static void col_at(Doc *d, const Rect *w, gint mx, gint my, long *line, long *co
     if (*col < 0) *col = 0;
 }
 
-/* Shift+Alt click / drag: box from the current anchor to the mouse. */
+/* Ctrl click / drag: box from the current anchor to the mouse. */
 static void col_drag(Doc *d, const Rect *w, gint mx, gint my)
 {
     gint x, y, b, k;
@@ -648,7 +648,7 @@ int win_click(Doc *d, gint mx, gint my, gint ks, gint clicks)
     if (mx < w.x || my < w.y || mx >= w.x + w.w || my >= w.y + w.h)
         return 0;
 
-    if ((ks & KS_SHIFT) && (ks & KS_ALT)) {
+    if ((ks & KS_CTRL) && !(ks & (KS_SHIFT | KS_ALT))) {
         col_drag(d, &w, mx, my);
         return 1;
     }

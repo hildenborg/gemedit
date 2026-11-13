@@ -102,7 +102,7 @@ static int nav_key(Doc *d, int scan, gint ks)
     int ext = (ks & KS_SHIFT) != 0, ctrl = (ks & KS_CTRL) != 0;
     long dl = 0, dc = 0;
 
-    if ((ks & KS_ALT) && ext) {                 /* Shift+Alt: column selection */
+    if (ctrl && !ext && !(ks & KS_ALT)) {       /* Ctrl+arrow: column selection */
         switch (scan) {
         case SC_UP:     dl = -1; break;
         case SC_DOWN:   dl = 1;  break;

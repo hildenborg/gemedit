@@ -52,17 +52,17 @@ Pure C: add all `.c` files to a project, link with the AES/VDI/standard libs.
 | Home / End | start / end of line | Ctrl-Home / Ctrl-End | start / end of document |
 | Page Up / Page Down | one page up / down (also Alt-Up/Down) | Esc | end a column selection |
 | **Shift-Ctrl-O** | **load session** | **Shift-Ctrl-W** | **save session** |
-| **Shift-Alt + drag** | **column (box) selection** | **Shift-Alt + arrows** | **extend column selection** |
+| **Ctrl + click / drag** | **column (box) selection** | **Ctrl + arrows** | **extend column selection** |
 
 * **Replace dialog**: has a *Replace all occurrences* check box. Unchecked, *Replace* replaces the selected match and finds the next; checked, it replaces every match in the current file (one undo step).
 * **Bookmarks menu**: lists the bookmarks that are set as `F<n> <document> Ln <line>` (selecting one jumps there) and *Clear All*.
   A bookmark stays on the same text when lines are added or removed above it,
   and it is removed when its document is closed. If its own line is deleted it moves to the line that took its place.
 * **Indent**: a selection that ends exactly at the start of a line does not include that line; blank lines are skipped. One undo reverts the whole block.
-* **Selection**: drag with the mouse, Shift-click, double-click a word, or Shift + arrow keys (also Shift-Home/End, Shift-Page Up/Down, Ctrl-Left/Right for words).
+* **Selection**: drag with the mouse, Shift-click, double-click a word, or Shift + arrow keys (also Shift-Home/End, Shift-Page Up/Down, Shift-Ctrl-Left/Right for words).
 * **Movement**: arrows, Home / End, Ctrl-Home / Ctrl-End, Page Up / Page Down. Paging moves the text with the caret, so the caret keeps its row in the window.
 * **End / Page keys**: the ST has none. Hatari (default symbolic keymap) sends End as the ST *Undo* key and Page Up / Down as the keypad *(* and *)* keys, so those ST keys act as End / Page Up / Page Down. The PC scan codes (ARAnyM, Eiffel, Milan) are accepted as well.
-* **Column selection** (as in VS Code): Shift-Alt-click or drag selects a box from the caret (or current box corner) to the mouse. Each line in the box gets its own caret; lines that end left of the box get none. Typing, Backspace, Delete, Cut and Paste act on every caret (one undo step); Left/Right/Home/End and word moves move every caret within its line. Copy puts one line per caret on the clipboard; pasting text with as many lines as there are carets puts one line at each caret. Return or pasting other multi-line text inserts it at every caret and ends the column selection; so do Up/Down, a click or Esc. Tab with a selected box indents its lines. Note that TOS / EmuTOS may use Alt + arrow keys to move the mouse pointer, in which case only the mouse works for column selection.
+* **Column selection** (as in VS Code): Ctrl-click or Ctrl-drag selects a box from the caret (or current box corner) to the mouse. Each line in the box gets its own caret; lines that end left of the box get none. Typing, Backspace, Delete, Cut and Paste act on every caret (one undo step); Left/Right/Home/End move every caret within its line. Copy puts one line per caret on the clipboard; pasting text with as many lines as there are carets puts one line at each caret. Return or pasting other multi-line text inserts it at every caret and ends the column selection; so do Up/Down, a click or Esc. Tab with a selected box indents its lines.
 * **Sessions**: *File > Save Session* writes the open documents (path and caret line) and the bookmarks to a text file. *Load Session* asks to save modified documents, closes all documents, opens the ones listed and restores the bookmarks and the top window. Untitled documents are not saved in a session.
 * Files are read as CR/LF or LF and saved with CR/LF; tabs display at 4 columns; Return auto-indents.
 
