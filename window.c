@@ -10,6 +10,8 @@
 #define RAWMAX  2048
 #define XBMAX   400
 
+static int blit_scroll(Doc *d, long rows);
+
 static char rawbuf[RAWMAX];
 static char xbuf[XBMAX];
 
@@ -338,7 +340,10 @@ static void set_scroll(Doc *d, long t, long l)
     d->left_col = l;
     clamp_scroll(d);
     if (ot != d->top_line || ol != d->left_col) {
-        redraw_all(d);
+        if (ol == d->left_col && blit_scroll(d, d->top_line - ot))
+            flush_dirty(d);
+        else
+            redraw_all(d);
         update_sliders(d);
     }
 }
@@ -358,9 +363,60 @@ void win_layout(Doc *d)
     update_sliders(d);
 }
 
+/* Scroll the window contents by 'rows' text rows (> 0: text moves up) with a
+ * screen-to-screen raster copy, and mark the uncovered lines dirty.  Only
+ * done when the work area is entirely visible (the first rectangle of the
+ * rectangle list is the whole work area), because vro_cpyfm is not clipped.
+ * Returns 0 if the caller must redraw everything instead. */
+#define VR_S_ONLY 3
+
+static int blit_scroll(Doc *d, long rows)
+{
+    Rect w, t;
+    MFDB scr;
+    gint p[8], dy;
+    long n = rows < 0 ? -rows : rows;
+
+    if (n == 0 || n >= d->page_rows)
+        return 0;
+    work_rect(d, &w);
+    wind_update(BEG_UPDATE);
+    wind_get(d->whandle, WF_FIRSTXYWH, &t.x, &t.y, &t.w, &t.h);
+    if (t.x != w.x || t.y != w.y || t.w != w.w || t.h != w.h ||
+        w.x < 0 || w.y < 0 || w.x + w.w > app.scrw || w.y + w.h > app.scrh) {
+        wind_update(END_UPDATE);
+        return 0;
+    }
+    dy = (gint)(n * app.ch);
+    memset(&scr, 0, sizeof scr);                /* fd_addr 0 = the screen */
+    p[0] = w.x;
+    p[2] = w.x + w.w - 1;
+    p[4] = w.x;
+    p[6] = w.x + w.w - 1;
+    if (rows > 0) {                             /* text moves up */
+        p[1] = w.y + dy;      p[3] = w.y + w.h - 1;
+        p[5] = w.y;           p[7] = w.y + w.h - 1 - dy;
+    } else {                                    /* text moves down */
+        p[1] = w.y;           p[3] = w.y + w.h - 1 - dy;
+        p[5] = w.y + dy;      p[7] = w.y + w.h - 1;
+    }
+    graf_mouse(M_OFF, 0);
+    vro_cpyfm(app.vh, VR_S_ONLY, p, &scr, &scr);
+    graf_mouse(M_ON, 0);
+    wind_update(END_UPDATE);
+
+    /* uncovered rows; at the bottom this includes the partly visible row */
+    if (rows > 0)
+        doc_mark_lines(d, d->top_line + d->page_rows - n, LINE_ALL);
+    else
+        doc_mark_lines(d, d->top_line, d->top_line + n - 1);
+    return 1;
+}
+
 void win_refresh(Doc *d)
 {
     long len = tb_len(&d->tb), oc = d->last_c, oa = d->last_a;
+    long ot = d->top_line, ol = d->left_col;
     int full = 0;
 
     if (d->whandle < 0)
@@ -370,6 +426,8 @@ void win_refresh(Doc *d)
     doc_mark_view_change(d, oc, oa);
     if (scroll_to_cursor(d)) full = 1;
     if (clamp_scroll(d)) full = 1;
+    if (full && d->left_col == ol && blit_scroll(d, d->top_line - ot))
+        full = 0;
     if (full) {
         d->dirty_lo = 0;
         d->dirty_hi = LINE_ALL;
@@ -385,15 +443,17 @@ void win_refresh(Doc *d)
  * so the caret keeps its row in the window. */
 void win_page(Doc *d, int down, int extend)
 {
-    long ol = tb_line_of(&d->tb, d->cursor);
+    long ol = tb_line_of(&d->tb, d->cursor), ot = d->top_line;
 
     doc_move(d, down ? MV_PGDN : MV_PGUP, extend);
     if (d->whandle < 0)
         return;
     d->top_line += tb_line_of(&d->tb, d->cursor) - ol;
     clamp_scroll(d);
-    d->dirty_lo = 0;
-    d->dirty_hi = LINE_ALL;
+    if (!blit_scroll(d, d->top_line - ot)) {
+        d->dirty_lo = 0;
+        d->dirty_hi = LINE_ALL;
+    }
     win_refresh(d);
 }
 

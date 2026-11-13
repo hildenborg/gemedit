@@ -21,6 +21,11 @@ static void mark(Doc *d, long lo, long hi)
         d->dirty_hi = hi;
 }
 
+void doc_mark_lines(Doc *d, long lo, long hi)
+{
+    mark(d, lo, hi);
+}
+
 static void note_width(Doc *d, long line)
 {
     long s = tb_line_start(&d->tb, line), e = tb_line_end(&d->tb, line);

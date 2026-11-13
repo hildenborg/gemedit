@@ -65,6 +65,7 @@ int   doc_save(Doc *d, const char *path);   /* 0 ok, -1 error; updates name/path
 long  doc_vcol(Doc *d, long line, long pos);
 long  doc_pos_at_col(Doc *d, long line, long col);
 void  doc_mark_view_change(Doc *d, long old_cursor, long old_anchor);
+void  doc_mark_lines(Doc *d, long lo, long hi);    /* add lines to the redraw range */
 
 /* selection / cursor */
 int   doc_sel_range(const Doc *d, long *s, long *e);   /* returns 1 if non-empty */
