@@ -37,9 +37,9 @@
 #ifdef __PUREC__
 #else
 #ifdef __M68K_ATARI_ELF__
-int _stksize = 1;
+int _stksize = 3;
 #else
-long _stksize = 1;
+long _stksize = 3;
 #endif
 #endif
 
