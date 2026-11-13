@@ -2,7 +2,7 @@
 
 # Project settings
 BUILD_DIR := build
-TARGET_NAME ?= gemedit
+TARGET_NAME ?= gedit
 CPU := 68000
 TOOLKIT	?= /usr/local/bin/m68k-atari-elf
 
