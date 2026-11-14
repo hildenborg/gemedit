@@ -4,6 +4,7 @@
  * File format (CR/LF lines, LF also accepted when reading):
  *     GEMEDIT SESSION 1
  *     D <line> <col> <path>        one per document, in window-menu order
+ *     W <doc> <x> <y> <w> <h>      outer window rectangle of a document (pixels)
  *     T <doc>                      document on top (0-based index)
  *     B <slot> <doc> <line>        bookmark F<slot>, slot 1..10
  * Lines and columns are 1-based, columns count characters in the line. */
@@ -18,6 +19,8 @@
 typedef struct {
     char path[PATHLEN];
     long line, col;             /* cursor, 0-based */
+    int  has_rect;              /* x, y, w, h valid                      */
+    long x, y, w, h;            /* window, outer rectangle in pixels     */
 } SesDoc;
 
 typedef struct {

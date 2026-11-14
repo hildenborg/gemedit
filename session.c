@@ -26,6 +26,10 @@ int ses_write(const char *path, const Session *s)
     for (i = 0; i < s->ndocs; i++)
         fprintf(f, "D %ld %ld %s\r\n", s->doc[i].line + 1, s->doc[i].col + 1,
                 s->doc[i].path);
+    for (i = 0; i < s->ndocs; i++)
+        if (s->doc[i].has_rect)
+            fprintf(f, "W %d %ld %ld %ld %ld\r\n", i, s->doc[i].x, s->doc[i].y,
+                    s->doc[i].w, s->doc[i].h);
     if (s->top >= 0)
         fprintf(f, "T %d\r\n", s->top);
     for (i = 0; i < BM_MAX; i++)
@@ -49,7 +53,7 @@ int ses_read(const char *path, Session *s)
 {
     FILE *f = fopen(path, "rb");
     char buf[PATHLEN + 48], *p;
-    long a, b;
+    long a, b, x, y, w, h;
     int slot, di, n;
     SesDoc *sd;
 
@@ -81,6 +85,17 @@ int ses_read(const char *path, Session *s)
             strcpy(sd->path, p);
             sd->line = a > 0 ? a - 1 : 0;
             sd->col = b > 0 ? b - 1 : 0;
+            break;
+        case 'W':                       /* refers to an earlier D line */
+            if (sscanf(buf + 1, " %d %ld %ld %ld %ld", &di, &x, &y, &w, &h) == 5 &&
+                di >= 0 && di < s->ndocs && w > 0 && h > 0) {
+                sd = &s->doc[di];
+                sd->x = x;
+                sd->y = y;
+                sd->w = w;
+                sd->h = h;
+                sd->has_rect = 1;
+            }
             break;
         case 'T':
             if (sscanf(buf + 1, " %d", &di) == 1)

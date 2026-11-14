@@ -19,6 +19,7 @@ void win_arrowed(Doc *d, gint what);    /* WM_ARROWED                   */
 void win_vslid(Doc *d, gint pos);       /* WM_VSLID                     */
 void win_hslid(Doc *d, gint pos);       /* WM_HSLID                     */
 void win_set_rect(Doc *d, gint x, gint y, gint w, gint h);  /* WM_SIZED / WM_MOVED */
+int  win_get_rect(Doc *d, Rect *r);     /* outer rectangle; 0 = no window */
 void win_fulled(Doc *d);                /* WM_FULLED                    */
 
 int  win_click(Doc *d, gint mx, gint my, gint ks, gint clicks);

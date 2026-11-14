@@ -211,6 +211,8 @@ static void cmd_save_session(void)
     char path[PATHLEN], msg[40];
     int i, j, idx[MAX_DOCS], skipped = 0;
     Doc *d, *top = app_top_doc();
+    SesDoc *sd;
+    Rect r;
     long line;
 
     ses_clear(&ses);
@@ -222,10 +224,18 @@ static void cmd_save_session(void)
             continue;
         }
         idx[i] = ses.ndocs;
+        sd = &ses.doc[ses.ndocs];
         line = tb_line_of(&d->tb, d->cursor);
-        strcpy(ses.doc[ses.ndocs].path, d->path);
-        ses.doc[ses.ndocs].line = line;
-        ses.doc[ses.ndocs].col = d->cursor - tb_line_start(&d->tb, line);
+        strcpy(sd->path, d->path);
+        sd->line = line;
+        sd->col = d->cursor - tb_line_start(&d->tb, line);
+        if (win_get_rect(d, &r)) {
+            sd->x = r.x;
+            sd->y = r.y;
+            sd->w = r.w;
+            sd->h = r.h;
+            sd->has_rect = 1;
+        }
         if (d == top)
             ses.top = ses.ndocs;
         ses.ndocs++;
@@ -249,6 +259,21 @@ static void cmd_save_session(void)
         sprintf(msg, "%d untitled document(s)", skipped);
         dlg_alert(1, msg, "were not saved in the session.");
     }
+}
+
+/* Put a window where the session says, shrunk / moved to fit the desktop
+ * (the session may come from a higher screen resolution). */
+static void place_window(Doc *d, const SesDoc *sd)
+{
+    long x = sd->x, y = sd->y, w = sd->w, h = sd->h;
+
+    if (w > app.desk.w) w = app.desk.w;
+    if (h > app.desk.h) h = app.desk.h;
+    if (x + w > app.desk.x + app.desk.w) x = app.desk.x + app.desk.w - w;
+    if (y + h > app.desk.y + app.desk.h) y = app.desk.y + app.desk.h - h;
+    if (x < app.desk.x) x = app.desk.x;
+    if (y < app.desk.y) y = app.desk.y;
+    win_set_rect(d, (gint)x, (gint)y, (gint)w, (gint)h);
 }
 
 /* Replace the open documents and the bookmarks with those in a session file.
@@ -281,6 +306,8 @@ static void cmd_load_session(void)
             continue;
         }
         d = map[i];
+        if (ses.doc[i].has_rect)
+            place_window(d, &ses.doc[i]);
         line = ses.doc[i].line;
         if (line >= tb_line_count(&d->tb))
             line = tb_line_count(&d->tb) - 1;

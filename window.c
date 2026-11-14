@@ -561,6 +561,14 @@ void win_hslid(Doc *d, gint pos)
     set_scroll(d, d->top_line, ((long)(pos - 1) * maxleft) / 999L);
 }
 
+int win_get_rect(Doc *d, Rect *r)
+{
+    if (d->whandle < 0)
+        return 0;
+    wind_get(d->whandle, WF_CURRXYWH, &r->x, &r->y, &r->w, &r->h);
+    return 1;
+}
+
 void win_set_rect(Doc *d, gint x, gint y, gint w, gint h)
 {
     if (w < MIN_W) w = MIN_W;
