@@ -29,10 +29,15 @@ For m68k-atari-elf toolchain:
     ./vscode
     SHIFT-CTRL-B
 
-For m68k-atari-mint-gcc + gemlib:
+or from a shell:
 
-    make                                  # m68k-atari-mint-gcc + gemlib
-    make CFLAGS="-O2 -DNO_FSEL_EXINPUT"   # for plain TOS 1.00
+    make                                   # -> build/gedit.prg
+    make TOOLKIT=/path/to/m68k-atari-elf
+
+For m68k-atari-mint-gcc + gemlib, use `Makefile.mint` (output in `build-mint/`):
+
+    make -f Makefile.mint                              # tools in PATH
+    make -f Makefile.mint MINT_TOOLKIT=/opt/cross-mint # tools in /opt/cross-mint/bin
 
 Pure C: add all `.c` files to a project, link with the AES/VDI/standard libs.
 

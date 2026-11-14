@@ -2,3 +2,4 @@
 *.Ds_store
 build/
 
+build-mint/

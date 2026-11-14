@@ -16,8 +16,11 @@ See `README.md` for the user-facing key and menu reference.
   `__M68K_ATARI_ELF__` (aes.h / vdi.h / tos.h), `__PUREC__`, otherwise
   m68k-atari-mint-gcc + gemlib (gem.h / osbind.h). Keep the other branches compiling.
 - `-DNO_FSEL_EXINPUT` is set in the Makefile, so `fsel_input()` is used.
+- `Makefile.mint` builds with m68k-atari-mint-gcc + gemlib (`-lgem`) into
+  `build-mint/`; tool dir via `MINT_TOOLKIT` (not `TOOLKIT`, which `vscode.sh`
+  exports for the ELF toolchain).
 - New `.c` files must be added to `SOURCES` and to the header dependency lines
-  at the bottom of the Makefile.
+  at the bottom of **both** `Makefile` and `Makefile.mint`.
 
 ## Architecture
 
