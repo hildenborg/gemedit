@@ -4,7 +4,7 @@
 BUILD_DIR := build
 TARGET_NAME ?= gedit
 CPU := 68000
-TOOLKIT	?= /usr/local/bin/m68k-atari-elf
+TOOLKIT	?= $(HOME)/toolchain/m68k-atari-elf
 
 LDFLAGS :=
 CFLAGS := -Wall -Os -g -m$(CPU) -DNO_FSEL_EXINPUT

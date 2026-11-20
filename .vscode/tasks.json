@@ -25,9 +25,9 @@
 			"label": "Start Hatari debug",
 			"command": "${workspaceFolder}/hatari_debug.sh",
 			"args": [
-				"--inferior", "${env:TARGET_NAME}.prg",
+				"--inferior", "gedit.prg",
 				"--build", "${workspaceFolder}/build",
-				"--harddrive", "${env:ST_HD_PATH}"
+				"--harddrive", "${workspaceFolder}/sthd"
 			],
 			"options": {
 				"cwd": "${workspaceFolder}"

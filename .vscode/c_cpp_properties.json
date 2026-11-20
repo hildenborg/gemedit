@@ -4,12 +4,12 @@
             "name": "m68k",
             "includePath": [
                 "${workspaceFolder}/**",
-				"${env:TOOLKIT}/m68k-atari-elf/include"
+                "${env:HOME}/toolchain/m68k-atari-elf/m68k-atari-elf/include"
             ],
             "defines": [
             ],
             "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "${env:TOOLKIT}/bin/m68k-atari-elf-gcc",
+            "compilerPath": "${env:HOME}/toolchain/m68k-atari-elf/bin/m68k-atari-elf-gcc",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "${default}",

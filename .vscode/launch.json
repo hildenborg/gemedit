@@ -8,12 +8,12 @@
 			"type": "gdbtarget",
 			"request": "attach",
 			"name": "cdt debug",
-			"program": "${workspaceFolder}/build/${env:TARGET_NAME}",
+			"program": "${workspaceFolder}/build/gedit",
 			"preLaunchTask": "Start Hatari debug",
 			"postDebugTask": "Stop Hatari debug",
 			"gdb": "gdb-multiarch",
 			"cwd": "${workspaceRoot}",
-			"target": {"parameters": ["${env:GDB_COM_PORT}"]}
+			"target": {"host": "localhost","port": "1234"}
         }
     ]
 }

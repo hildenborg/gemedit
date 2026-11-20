@@ -86,6 +86,9 @@ if [ "$STOP" -eq 1 ]; then
 	exit 0
 fi
 
+# Make sure st hard disk folder exists
+mkdir -p "$HD_DIR"
+
 [ -n "$INFERIOR" ] || die "--inferior must be set (see --help)"
 [ -f "$TOS_IMG" ]  || die "TOS image not found: $TOS_IMG"
 [ -d "$BUILD_DIR" ] || die "build folder not found: $BUILD_DIR"

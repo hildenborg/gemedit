@@ -1,5 +1,6 @@
 *.pyc
 *.Ds_store
 build/
+sthd/
 
 build-mint/
