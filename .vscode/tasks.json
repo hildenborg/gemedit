@@ -43,7 +43,7 @@
 				"background": {
 					"activatesOnStart": true,
 					"beginsPattern": "^TOS:",
-					"endsPattern": "^gdb server ready"
+					"endsPattern": "^GDB server: program .* started, waiting for gdb to connect"
 				}
 			}
 		},

@@ -127,14 +127,18 @@ hatari \
 	--gemdos-drive C \
 	--gdbserver "$PORT" \
 	--gdbserver-wait on \
+	--symload off \
 	--auto "$ATARI_PATH" &
 HATARI_PID=$!
 echo "$HATARI_PID" > "$PID_FILE"
 trap 'kill "$HATARI_PID" 2>/dev/null' INT TERM HUP
 trap 'rm -f "$PID_FILE"' EXIT
 
-# Wait until Hatari's gdb server is listening, then announce it. VS Code's
-# background task waits for the "gdb server ready" line before attaching.
+# Check that Hatari's gdb server comes up. gdb must NOT connect yet: with
+# --gdbserver-wait, Hatari prints "GDB server: program '...' started, waiting
+# for gdb to connect" once the program is loaded, and only a gdb connecting
+# after that gets the program's load offsets (qOffsets) and the stop at its
+# first instruction. VS Code's background task waits for that Hatari line.
 tries=0
 until port_listening; do
 	kill -0 "$HATARI_PID" 2>/dev/null || { wait "$HATARI_PID"; die "hatari exited (status $?)"; }
@@ -142,7 +146,7 @@ until port_listening; do
 	[ "$tries" -le 100 ] || { kill "$HATARI_PID"; die "gdb server did not open port $PORT"; }
 	sleep 0.1
 done
-echo "gdb server ready: target remote 127.0.0.1:$PORT"
+echo "gdb server listening on 127.0.0.1:$PORT, waiting for $ATARI_PATH to start..."
 
 wait "$HATARI_PID"
 status=$?
