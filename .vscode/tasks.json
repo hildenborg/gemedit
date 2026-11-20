@@ -22,18 +22,40 @@
 		},
 		{
 			"type": "shell",
-			"label": "Copy to HD",
-			"command": "cp",
+			"label": "Start Hatari debug",
+			"command": "${workspaceFolder}/hatari_debug.sh",
 			"args": [
-				{
-					"quoting": "strong",
-					"value": "${workspaceFolder}/build/${env:TARGET_NAME}.prg"
-				},
-				{
-					"quoting": "strong",
-					"value": "${env:ST_HD_PATH}/${env:TARGET_NAME}.prg"
-				},
+				"--inferior", "${env:TARGET_NAME}.prg",
+				"--build", "${workspaceFolder}/build",
+				"--harddrive", "${env:ST_HD_PATH}"
 			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"dependsOn": "Atari ST cross compile",
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "hatari",
+				"pattern": {
+					"regexp": "^hatari_debug\\.sh: (.*)$",
+					"message": 1
+				},
+				"background": {
+					"activatesOnStart": true,
+					"beginsPattern": "^TOS:",
+					"endsPattern": "^gdb server ready"
+				}
+			}
+		},
+		{
+			"type": "shell",
+			"label": "Stop Hatari debug",
+			"command": "${workspaceFolder}/hatari_debug.sh",
+			"args": ["--stop"],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "silent"
+			}
 		},
     ]
 }

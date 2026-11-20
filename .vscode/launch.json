@@ -9,7 +9,8 @@
 			"request": "attach",
 			"name": "cdt debug",
 			"program": "${workspaceFolder}/build/${env:TARGET_NAME}",
-			"preLaunchTask": "Copy to HD",
+			"preLaunchTask": "Start Hatari debug",
+			"postDebugTask": "Stop Hatari debug",
 			"gdb": "gdb-multiarch",
 			"cwd": "${workspaceRoot}",
 			"target": {"parameters": ["${env:GDB_COM_PORT}"]}
