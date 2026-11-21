@@ -1,11 +1,11 @@
 # Building and debugging in VS Code with Hatari
 
 Pressing **F5** in VS Code builds the editor, starts it in the
-[Hatari](https://hatari.tuxfamily.org/) emulator, and attaches gdb to it, so
+[Hatari forked](https://github.com/hildenborg/hatari) emulator, and attaches gdb to it, so
 breakpoints in the C source work as on any native program. Stopping the
 debugger closes Hatari again.
 
-Four pieces take part:
+The files involved:
 
 | File | Role |
 |------|------|
@@ -26,6 +26,9 @@ Four pieces take part:
 - **VS Code extensions**: *C/C++* (`ms-vscode.cpptools`) for IntelliSense and
   *CDT GDB Debug Adapter* (`eclipse-cdt.cdt-gdb-vscode`), which provides the
   `gdbtarget` debug type.
+- **Optional VS Code extension**: *CDT Memory Inspector*
+  (`eclipse-cdt.memory-inspector`), to view and edit the ST's memory while
+  the program is stopped.
 - `ss` (from iproute2), used by the script to check the gdb port.
 
 ## What happens when you press F5
