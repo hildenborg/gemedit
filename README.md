@@ -24,10 +24,13 @@ Written mainly by using Claude AI.
 
 ## Build
 
-For m68k-atari-elf toolchain:
+For m68k-atari-elf toolchain, in VS Code (open the project folder):
 
-    ./vscode
-    SHIFT-CTRL-B
+    SHIFT-CTRL-B                           # build
+    F5                                     # build, start in Hatari and debug
+
+See [DEBUGGING.md](DEBUGGING.md) for how VS Code, `hatari_debug.sh` and
+Hatari work together, and what you need installed.
 
 or from a shell:
 
